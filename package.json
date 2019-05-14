@@ -1,0 +1,29 @@
+{
+  "name": "cartographer",
+  "version": "1.0.0",
+  "description": "A tool for generating fantasy maps",
+  "main": "index.js",
+  "scripts": {
+    "dev": "parcel src/index.html",
+    "build": "parcel build src/index.html --public-url http://aszecsei.github.io/cartographer/",
+    "deploy": "npm run build && git add . && git commit -a -m 'latest build' && git push origin master"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aszecsei/cartographer.git"
+  },
+  "author": "Alic Szecsei <aszecsei@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/aszecsei/cartographer/issues"
+  },
+  "homepage": "https://github.com/aszecsei/cartographer#readme",
+  "devDependencies": {
+    "@types/d3-delaunay": "^4.1.0",
+    "parcel-bundler": "^1.12.3",
+    "typescript": "^3.4.5"
+  },
+  "dependencies": {
+    "d3-delaunay": "^4.1.5"
+  }
+}
