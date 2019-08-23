@@ -3184,6 +3184,7 @@ var PLATE_COLOR_MAP = ["black", "blue", "red", "purple", "green", "teal", "navy"
 var NUM_PLATE_STEPS = 10;
 var PLATE_ANGLE_COS = 0;
 var MAX_HEIGHT_DIFF = 5;
+var LINELESS = true;
 var canvas = document.getElementById("canvas");
 var ctx = canvas.getContext("2d");
 
@@ -3421,10 +3422,14 @@ function main() {
         color = new tinycolor_1.TinyColor('blue');
       }
 
-      color = color.darken(height_percent / 3);
+      color = color.shade(height_percent / 1.2);
       ctx.fillStyle = color.toRgbString(); // ctx.fillStyle = `rgb(${height_percent}%, ${height_percent}%, ${height_percent}%)`
 
-      ctx.fill(); // ctx.strokeStyle = ctx.fillStyle;
+      ctx.fill();
+
+      if (LINELESS) {
+        ctx.strokeStyle = ctx.fillStyle;
+      }
 
       ctx.stroke();
     }
@@ -3464,7 +3469,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50536" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50947" + '/');
 
   ws.onmessage = function (event) {
     checkedAssets = {};

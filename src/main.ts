@@ -25,6 +25,8 @@ const NUM_PLATE_STEPS = 10;
 const PLATE_ANGLE_COS = 0;
 const MAX_HEIGHT_DIFF = 5;
 
+const LINELESS = true;
+
 interface IPoint {
   loc: Vec2;
   plateId: number;
@@ -225,13 +227,13 @@ function main() {
       } else {
         color = new TinyColor('blue');
       }
-      color = color.darken(height_percent / 3);
+      color = color.shade(height_percent / 1.2);
 
       ctx.fillStyle = color.toRgbString();
       // ctx.fillStyle = `rgb(${height_percent}%, ${height_percent}%, ${height_percent}%)`
       ctx.fill();
 
-      // ctx.strokeStyle = ctx.fillStyle;
+      if (LINELESS) { ctx.strokeStyle = ctx.fillStyle; }
       ctx.stroke();
     }
 
