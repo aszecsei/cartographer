@@ -1,6 +1,7 @@
 import { Vec2 } from "./math/vec2";
 import { Delaunay, Voronoi } from "d3-delaunay";
 import { lerp } from './math/mathf';
+import { TinyColor } from '@ctrl/tinycolor';
 
 const NUM_POINTS = 5000;
 const WIDTH = 1280;
@@ -21,6 +22,8 @@ const PLATE_COLOR_MAP = [
   "pink"
 ];
 const NUM_PLATE_STEPS = 10;
+const PLATE_ANGLE_COS = 0;
+const MAX_HEIGHT_DIFF = 5;
 
 interface IPoint {
   loc: Vec2;
@@ -104,6 +107,32 @@ function genNeighbors(voronoi: Voronoi<number[]>): number[][] {
   return res;
 }
 
+function getRandom(start, end) {
+  return Math.floor(Math.random() * (end - start + 1) + start)
+}
+
+function shuffleInPlace<T>(array: T[]): T[] {
+  // if it's 1 or 0 items, just return
+  if (array.length <= 1) return array;
+
+  // For each index in array
+  for (let i = 0; i < array.length; i++) {
+
+    // choose a random not-yet-placed item to place there
+    // must be an item AFTER the current item, because the stuff
+    // before has all already been placed
+    const randomChoiceIndex = getRandom(i, array.length - 1);
+
+    // place our random choice in the spot by swapping
+    [array[i], array[randomChoiceIndex]] = [array[randomChoiceIndex], array[i]];
+  }
+
+  return array;
+}
+
+
+function range(start, end): number[] { return Array.from({length: (end - start)}, (v, k) => k + start); }
+
 function heightGen(voronoi: Voronoi<number[]>, points: IPoint[]): IPoint[] {
   let plateDirections: Vec2[] = [];
   for (let plate_idx = 0; plate_idx < NUM_PLATES; plate_idx++) {
@@ -115,10 +144,14 @@ function heightGen(voronoi: Voronoi<number[]>, points: IPoint[]): IPoint[] {
 
   let neighbors = genNeighbors(voronoi);
 
+  let r = range(0, NUM_POINTS);
+
   for (let i = 0; i < NUM_PLATE_STEPS; i++) {
-    for (let cell = 0; cell < NUM_POINTS; cell++) {
+    shuffleInPlace(r);
+    for (let cell of r) {
       let cell_point = points[cell];
       let neighbor_cells = neighbors[cell];
+      shuffleInPlace(neighbor_cells);
       for (var neighbor_cell_idx of neighbor_cells) {
         let neighbor_cell_point = points[neighbor_cell_idx];
         let dir = new Vec2(
@@ -127,18 +160,18 @@ function heightGen(voronoi: Voronoi<number[]>, points: IPoint[]): IPoint[] {
         );
         let cell_plate_dir = plateDirections[cell_point.plateId];
         let dot = dir.x * cell_plate_dir.x + dir.y * cell_plate_dir.y;
-        if (dot > 0) {
-          if (neighbor_cell_point.height - cell_point.height <= 3) {
-            neighbor_cell_point.height++;
-          } else {
-            cell_point.height++;
-          }
-        } else {
-          if (cell_point.height - neighbor_cell_point.height <= 3) {
-            neighbor_cell_point.height--;
-          } else {
-            cell_point.height--;
-          }
+        if (dot > PLATE_ANGLE_COS) {
+          neighbor_cell_point.height++;
+          cell_point.height++;
+        } else if (dot < -PLATE_ANGLE_COS) {
+          neighbor_cell_point.height--;
+          cell_point.height--;
+        }
+
+        if (Math.abs(cell_point.height - neighbor_cell_point.height) > MAX_HEIGHT_DIFF) {
+          let avg = (cell_point.height + neighbor_cell_point.height) / 2;
+          cell_point.height = (cell_point.height + avg) / 2;
+          neighbor_cell_point.height = (neighbor_cell_point.height + avg) / 2;
         }
       }
     }
@@ -168,6 +201,7 @@ function main() {
 
   let min_height = points.reduce((agg, curr) => (curr.height < agg ? curr.height : agg), points[0].height);
   let max_height = points.reduce((agg, curr) => (curr.height > agg ? curr.height : agg), points[0].height);
+  let avg_height = points.reduce((agg, curr) => (agg + curr.height), 0) / points.length;
 
   ctx.clearRect(0, 0, 800, 600);
 
@@ -184,9 +218,20 @@ function main() {
       let p = pts[i];
       voronoi.renderCell(p.idx, ctx);
 
-      let height_percent = (p.p.height - min_height) / (max_height - min_height) * 100;
-      ctx.fillStyle = `rgb(${height_percent}%, ${height_percent}%, ${height_percent}%)`
+      let height_percent = 100 - (100 * (p.p.height - min_height) / (max_height - min_height));
+      let color: TinyColor;
+      if (p.p.height > avg_height) {
+        color = new TinyColor('brown');
+      } else {
+        color = new TinyColor('blue');
+      }
+      color = color.darken(height_percent / 3);
+
+      ctx.fillStyle = color.toRgbString();
+      // ctx.fillStyle = `rgb(${height_percent}%, ${height_percent}%, ${height_percent}%)`
       ctx.fill();
+
+      // ctx.strokeStyle = ctx.fillStyle;
       ctx.stroke();
     }
 

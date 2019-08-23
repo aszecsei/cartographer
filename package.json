@@ -24,6 +24,7 @@
     "typescript": "^3.5.3"
   },
   "dependencies": {
+    "@ctrl/tinycolor": "^2.5.3",
     "d3-delaunay": "^5.1.3"
   }
 }
