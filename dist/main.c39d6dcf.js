@@ -1498,7 +1498,17 @@ var _delaunay = _interopRequireDefault(require("./delaunay.js"));
 var _voronoi = _interopRequireDefault(require("./voronoi.js"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-},{"./delaunay.js":"../node_modules/d3-delaunay/src/delaunay.js","./voronoi.js":"../node_modules/d3-delaunay/src/voronoi.js"}],"../node_modules/@ctrl/tinycolor/dist/es/util.js":[function(require,module,exports) {
+},{"./delaunay.js":"../node_modules/d3-delaunay/src/delaunay.js","./voronoi.js":"../node_modules/d3-delaunay/src/voronoi.js"}],"math/mathf.ts":[function(require,module,exports) {
+"use strict";
+
+exports.__esModule = true;
+
+function lerp(a0, a1, t) {
+  return (1.0 - t) * a0 + t * a1;
+}
+
+exports.lerp = lerp;
+},{}],"../node_modules/@ctrl/tinycolor/dist/es/util.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -3174,6 +3184,8 @@ var vec2_1 = require("./math/vec2");
 
 var d3_delaunay_1 = require("d3-delaunay");
 
+var mathf_1 = require("./math/mathf");
+
 var tinycolor_1 = require("@ctrl/tinycolor");
 
 var NUM_POINTS = 5000;
@@ -3181,10 +3193,25 @@ var WIDTH = 1280;
 var HEIGHT = 720;
 var NUM_PLATES = 10;
 var PLATE_COLOR_MAP = ["black", "blue", "red", "purple", "green", "teal", "navy", "yellow", "magenta", "white", "pink"];
-var NUM_PLATE_STEPS = 10;
+var NUM_PLATE_STEPS = 20;
 var PLATE_ANGLE_COS = 0;
 var MAX_HEIGHT_DIFF = 5;
+var WATER_ITERATIONS = 10000;
+var RAIN_TRANSFER_AMT = 1;
+var EROSION_AMT = 0.2;
+var CYCLES_PER_EVAPORATION = 1000;
+var EVAPORATION_AMT = 0.2;
 var LINELESS = true;
+
+function getTotalHeight(point) {
+  return point.height + point.water;
+}
+
+function smoothStep(a, b, t) {
+  var new_t = t * t * (3 - 2 * t);
+  return mathf_1.lerp(a, b, new_t);
+}
+
 var canvas = document.getElementById("canvas");
 var ctx = canvas.getContext("2d");
 
@@ -3202,7 +3229,8 @@ function generatePoints() {
         y: Math.random() * HEIGHT
       },
       plateId: -1,
-      height: 0
+      height: 0,
+      water: 0
     };
   }
 
@@ -3257,23 +3285,29 @@ function genNeighbors(voronoi) {
   }
 
   var _loop_1 = function _loop_1(i) {
-    var cell_poly = voronoi.cellPolygon(i);
+    var cell_poly = cells[i];
     var neighbor_cells = cells.map(function (val, idx) {
       return {
         val: val,
         idx: idx
       };
     }).filter(function (_a) {
-      var val = _a.val;
+      var val = _a.val,
+          idx = _a.idx;
       var matched_verts = val.filter(function (pnt) {
         return cell_poly.filter(function (pnt2) {
           return pnt[0] == pnt2[0] && pnt[1] == pnt[1];
         }).length > 0;
       }).length;
-      return matched_verts == 2;
+      return idx != i && matched_verts >= 2;
     }).map(function (val) {
       return val.idx;
     });
+
+    if (neighbor_cells.length == 0) {
+      console.error("Cell has no neighbors!");
+    }
+
     res.push(neighbor_cells);
   };
 
@@ -3330,7 +3364,7 @@ function heightGen(voronoi, points) {
     for (var _i = 0, r_1 = r; _i < r_1.length; _i++) {
       var cell = r_1[_i];
       var cell_point = points[cell];
-      var neighbor_cells = neighbors[cell];
+      var neighbor_cells = neighbors[cell].slice();
       shuffleInPlace(neighbor_cells);
 
       for (var _a = 0, neighbor_cells_1 = neighbor_cells; _a < neighbor_cells_1.length; _a++) {
@@ -3360,6 +3394,170 @@ function heightGen(voronoi, points) {
   return points;
 }
 
+function waterGen(voronoi, points) {
+  var neighbors = genNeighbors(voronoi);
+  var avg_height = points.reduce(function (agg, curr) {
+    return curr.height + agg;
+  }, points[0].height) / NUM_POINTS;
+
+  for (var _i = 0, _a = range(0, NUM_POINTS); _i < _a.length; _i++) {
+    var r_5 = _a[_i];
+    var cell = points[r_5];
+
+    if (cell.height < avg_height) {
+      cell.water = avg_height - cell.height;
+    }
+  }
+
+  var r = range(0, NUM_POINTS);
+
+  for (var i = 0; i < WATER_ITERATIONS; i++) {
+    shuffleInPlace(r); // Evaporation (only occurs every CYCLES_PER_EVAPORATION iteration)
+
+    if (i % CYCLES_PER_EVAPORATION == 0) {
+      var total_evaporation = 0;
+
+      for (var _b = 0, r_2 = r; _b < r_2.length; _b++) {
+        var cell = r_2[_b];
+        var cell_point = points[cell];
+
+        if (cell_point.water > 0) {
+          var amt = cell_point.water > EVAPORATION_AMT ? EVAPORATION_AMT : cell_point.water;
+          cell_point.water -= amt;
+          total_evaporation += amt;
+        }
+      }
+
+      var rainfall = total_evaporation / NUM_POINTS;
+      console.log("RAINFALL: " + rainfall);
+
+      for (var _c = 0, r_3 = r; _c < r_3.length; _c++) {
+        var cell = r_3[_c];
+        var cell_point = points[cell];
+        cell_point.water += rainfall;
+      }
+    }
+
+    for (var _d = 0, r_4 = r; _d < r_4.length; _d++) {
+      var cell = r_4[_d];
+      var cell_point = points[cell];
+      var neighbor_cells = neighbors[cell].slice();
+      shuffleInPlace(neighbor_cells);
+
+      if (cell_point.water > 0) {
+        // Water flows from a cell to its lowest neighbor if the cell
+        // (a) has water, and
+        // (b) the cell's height plus water is greater than the neighbor cell's height plus water
+        var min_neighbor = neighbor_cells.reduce(function (curr_min, neighbor_idx) {
+          if (curr_min == undefined) {
+            return points[neighbor_idx];
+          }
+
+          if (getTotalHeight(points[neighbor_idx]) < getTotalHeight(curr_min)) {
+            return points[neighbor_idx];
+          } else {
+            return curr_min;
+          }
+        }, undefined);
+
+        if (min_neighbor === undefined) {
+          console.error("NEIGHBOR UNDEFINED???");
+          console.log(neighbor_cells);
+          continue;
+        }
+
+        var transfer_diff = getTotalHeight(cell_point) - getTotalHeight(min_neighbor);
+
+        if (transfer_diff > 0) {
+          if (transfer_diff <= RAIN_TRANSFER_AMT) {
+            // Average the two heights
+            var avg_height_1 = (cell_point.height + cell_point.water + (min_neighbor.height + min_neighbor.water)) / 2;
+            var transfer_amt = avg_height_1 - (min_neighbor.height + min_neighbor.water);
+
+            if (transfer_amt < cell_point.water) {
+              transfer_amt = cell_point.water;
+            }
+
+            cell_point.water -= transfer_amt;
+            min_neighbor.water += transfer_amt;
+            var percent = transfer_amt / RAIN_TRANSFER_AMT; // Erosion
+
+            cell_point.height -= EROSION_AMT * transfer_diff * percent;
+            min_neighbor.height += EROSION_AMT * transfer_diff * percent;
+          } else {
+            cell_point.water -= RAIN_TRANSFER_AMT;
+            min_neighbor.water += RAIN_TRANSFER_AMT; // Erosion
+
+            cell_point.height -= EROSION_AMT * transfer_diff;
+            min_neighbor.height += EROSION_AMT * transfer_diff;
+          }
+        }
+      }
+    }
+  }
+
+  return points;
+}
+
+function render(voronoi, points) {
+  var min_height = points.reduce(function (agg, curr) {
+    return getTotalHeight(curr) < agg ? getTotalHeight(curr) : agg;
+  }, getTotalHeight(points[0]));
+  var max_height = points.reduce(function (agg, curr) {
+    return getTotalHeight(curr) > agg ? getTotalHeight(curr) : agg;
+  }, getTotalHeight(points[0]));
+  var max_water = points.reduce(function (agg, curr) {
+    return curr.water > agg ? curr.water : agg;
+  }, points[0].water);
+  ctx.clearRect(0, 0, 800, 600);
+  ctx.strokeStyle = "black";
+
+  var _loop_2 = function _loop_2(plate_idx) {
+    console.log("Rendering " + ctx.fillStyle);
+    var pts = points.map(function (val, idx) {
+      return {
+        p: val,
+        idx: idx
+      };
+    }).filter(function (val) {
+      return val.p.plateId === plate_idx;
+    });
+    var pl = pts.length;
+
+    for (var i = 0; i < pl; i++) {
+      ctx.beginPath();
+      var p = pts[i];
+      voronoi.renderCell(p.idx, ctx);
+      var height_percent = 100 - 100 * (getTotalHeight(p.p) - min_height) / (max_height - min_height);
+      var color = void 0;
+
+      if (p.p.water < EVAPORATION_AMT) {
+        color = new tinycolor_1.TinyColor('brown');
+        color = color.shade(height_percent / 1.1);
+      } else {
+        var water_percent = mathf_1.lerp(0, 100, p.p.water / max_water);
+        var shallow = new tinycolor_1.TinyColor("#0059ff");
+        var deep = new tinycolor_1.TinyColor("#2109ab");
+        color = shallow.mix(deep, water_percent); // color = new TinyColor("blue");
+      }
+
+      ctx.fillStyle = color.toRgbString(); // ctx.fillStyle = `rgb(${height_percent}%, ${height_percent}%, ${height_percent}%)`
+
+      ctx.fill();
+
+      if (LINELESS) {
+        ctx.strokeStyle = ctx.fillStyle;
+      }
+
+      ctx.stroke();
+    }
+  };
+
+  for (var plate_idx = 0; plate_idx < NUM_PLATES; plate_idx++) {
+    _loop_2(plate_idx);
+  }
+}
+
 function main() {
   var points = generatePoints();
   floodFill(points);
@@ -3385,63 +3583,12 @@ function main() {
   delaunay = d3_delaunay_1.Delaunay.from(voronoi_points);
   voronoi = delaunay.voronoi([0, 0, WIDTH, HEIGHT]);
   heightGen(voronoi, points);
-  var min_height = points.reduce(function (agg, curr) {
-    return curr.height < agg ? curr.height : agg;
-  }, points[0].height);
-  var max_height = points.reduce(function (agg, curr) {
-    return curr.height > agg ? curr.height : agg;
-  }, points[0].height);
-  var avg_height = points.reduce(function (agg, curr) {
-    return agg + curr.height;
-  }, 0) / points.length;
-  ctx.clearRect(0, 0, 800, 600);
-  ctx.strokeStyle = "black";
-
-  var _loop_2 = function _loop_2(plate_idx) {
-    console.log("Rendering " + ctx.fillStyle);
-    var pts = points.map(function (val, idx) {
-      return {
-        p: val,
-        idx: idx
-      };
-    }).filter(function (val) {
-      return val.p.plateId === plate_idx;
-    });
-    var pl = pts.length;
-
-    for (var i = 0; i < pl; i++) {
-      ctx.beginPath();
-      var p = pts[i];
-      voronoi.renderCell(p.idx, ctx);
-      var height_percent = 100 - 100 * (p.p.height - min_height) / (max_height - min_height);
-      var color = void 0;
-
-      if (p.p.height > avg_height) {
-        color = new tinycolor_1.TinyColor('brown');
-      } else {
-        color = new tinycolor_1.TinyColor('blue');
-      }
-
-      color = color.shade(height_percent / 1.2);
-      ctx.fillStyle = color.toRgbString(); // ctx.fillStyle = `rgb(${height_percent}%, ${height_percent}%, ${height_percent}%)`
-
-      ctx.fill();
-
-      if (LINELESS) {
-        ctx.strokeStyle = ctx.fillStyle;
-      }
-
-      ctx.stroke();
-    }
-  };
-
-  for (var plate_idx = 0; plate_idx < NUM_PLATES; plate_idx++) {
-    _loop_2(plate_idx);
-  }
+  waterGen(voronoi, points);
+  render(voronoi, points);
 }
 
 main();
-},{"./math/vec2":"math/vec2.ts","d3-delaunay":"../node_modules/d3-delaunay/src/index.js","@ctrl/tinycolor":"../node_modules/@ctrl/tinycolor/dist/es/public_api.js"}],"../node_modules/parcel-bundler/src/builtins/hmr-runtime.js":[function(require,module,exports) {
+},{"./math/vec2":"math/vec2.ts","d3-delaunay":"../node_modules/d3-delaunay/src/index.js","./math/mathf":"math/mathf.ts","@ctrl/tinycolor":"../node_modules/@ctrl/tinycolor/dist/es/public_api.js"}],"../node_modules/parcel-bundler/src/builtins/hmr-runtime.js":[function(require,module,exports) {
 var global = arguments[3];
 var OVERLAY_ID = '__parcel__error__overlay__';
 var OldModule = module.bundle.Module;
@@ -3469,7 +3616,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "50947" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "63787" + '/');
 
   ws.onmessage = function (event) {
     checkedAssets = {};
